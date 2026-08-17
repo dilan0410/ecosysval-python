@@ -1,0 +1,97 @@
+# ============================================
+# .gitignore para proyecto Python + FastAPI
+# ============================================
+
+# ==========================================
+# ENTORNO VIRTUAL
+# ==========================================
+venv/
+env/
+ENV/
+.venv/
+
+# ==========================================
+# VARIABLES DE ENTORNO - Secretos
+# ==========================================
+.env
+.env.local
+.env.*.local
+
+# Mantener el ejemplo público
+!.env.example
+
+# ==========================================
+# PYTHON - Archivos generados automáticamente
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ==========================================
+# DISTRIBUCIÓN / EMPAQUETADO
+# ==========================================
+build/
+dist/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ==========================================
+# TESTING
+# ==========================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ==========================================
+# EDITORES E IDEs
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==========================================
+# SISTEMA OPERATIVO
+# ==========================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ==========================================
+# LOGS Y BASES DE DATOS LOCALES
+# ==========================================
+*.log
+*.sqlite3
+*.db
+logs/
+
+# ==========================================
+# JUPYTER NOTEBOOKS
+# ==========================================
+.ipynb_checkpoints/
+
+# ==========================================
+# DATOS TEMPORALES / CACHE
+# ==========================================
+data/temp/
+data/cache/
+*.tmp
+
+# ==========================================
+# ARCHIVOS DE PRUEBA (opcionales)
+# ==========================================
+resultados.json
+resultados_completos.json

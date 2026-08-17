@@ -1,0 +1,32 @@
+# ==========================================
+# CONFIGURACIÓN DE RENDER
+# ==========================================
+# Archivo que le dice a Render cómo desplegar la app.
+# Documentación: https://render.com/docs/blueprint-spec
+
+services:
+  # ==========================================
+  # SERVICIO: Ecosysval Python API
+  # ==========================================
+  - type: web
+    name: ecosysval-python-api
+    runtime: python
+    plan: free
+    region: oregon
+    
+    # ==========================================
+    # BUILD: Cómo instalar dependencias
+    # ==========================================
+    buildCommand: pip install -r requirements.txt
+    
+    # ==========================================
+    # START: Cómo arrancar la app
+    # ==========================================
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    
+    # ==========================================
+    # VARIABLES DE ENTORNO
+    # ==========================================
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
