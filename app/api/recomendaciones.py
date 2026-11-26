@@ -14,8 +14,9 @@ Endpoints disponibles:
 from fastapi import APIRouter, HTTPException, Query
 from typing import List
 
-from app.services.mip_service import analizar_sector, listar_sectores
+from app.services.mip_service import analizar_sector, listar_sectores, resolver_sector
 from app.services.clasificacion_service import obtener_estadisticas, obtener_categoria
+from app.services.codigo_service import CodigoInvalidoError
 from app.models.recomendacion import (
     RecomendacionCompleta,
     SectorSimple,
@@ -73,28 +74,51 @@ def obtener_info_sector(codigo: str):
     """
     Info básica de un sector.
 
-    Args:
-        codigo: Código SCIAN (ej: "3111")
-    """
-    categoria = obtener_categoria(codigo)
+    Usa la misma resolución centralizada que /recomendaciones/{codigo}:
+    un código de clase (6 dígitos) o con equivalencia en el crosswalk
+    se homologa a su rama MIP y responde 200 con la trazabilidad.
 
-    # Verificar que el sector exista en la MIP
+    Args:
+        codigo: Código SCIAN (ej: "3111" o "311811")
+    """
+    try:
+        resolucion = resolver_sector(codigo)
+    except CodigoInvalidoError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "causa": "formato_invalido",
+                "codigo": codigo,
+                "mensaje": str(exc),
+            },
+        )
+
+    if resolucion is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "causa": "sin_equivalencia_mip",
+                "codigo": codigo,
+                "mensaje": (
+                    f"El código '{codigo}' es válido pero no tiene equivalencia "
+                    "en la MIP 2013 ni en la tabla puente (crosswalk_scian_mip.csv)."
+                ),
+            },
+        )
+
     sectores = listar_sectores()
     sector_info = next(
-        (s for s in sectores if s["codigo"] == codigo),
+        (s for s in sectores if s["codigo"] == resolucion.codigo_resuelto),
         None
     )
 
-    if not sector_info:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sector '{codigo}' no encontrado en la MIP"
-        )
-
     return {
-        "codigo": codigo,
+        "codigo": resolucion.codigo_buscado,
+        "codigo_resuelto": resolucion.codigo_resuelto,
         "nombre": sector_info["nombre"],
-        "categoria": categoria
+        "categoria": obtener_categoria(resolucion.codigo_resuelto),
+        "metodo_mapeo": resolucion.metodo_mapeo,
+        "nivel_agregacion": resolucion.nivel_agregacion,
     }
 
 
@@ -131,13 +155,30 @@ def obtener_recomendaciones(
         codigo: Código SCIAN del sector (ej: "3111")
         top_n: Cantidad de clientes/proveedores a devolver
     """
-    resultado = analizar_sector(codigo, top_n=top_n)
+    try:
+        resultado = analizar_sector(codigo, top_n=top_n)
+    except CodigoInvalidoError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "causa": "formato_invalido",
+                "codigo": codigo,
+                "mensaje": str(exc),
+            },
+        )
 
     if not resultado:
         raise HTTPException(
             status_code=404,
-            detail=f"Sector '{codigo}' no encontrado en la MIP. "
-                   f"Prueba con /recomendaciones/sectores para ver los disponibles."
+            detail={
+                "causa": "sin_equivalencia_mip",
+                "codigo": codigo,
+                "mensaje": (
+                    f"El código '{codigo}' es válido pero no tiene equivalencia "
+                    "en la MIP 2013 ni en la tabla puente (crosswalk_scian_mip.csv). "
+                    "Prueba con /recomendaciones/sectores para ver los disponibles."
+                ),
+            },
         )
 
     return resultado

@@ -8,7 +8,7 @@ Sistema Inteligente Económico
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # NUEVO
 from app.core.config import APP_NAME, APP_VERSION, APP_DESCRIPTION
-from app.api import recomendaciones
+from app.api import recomendaciones, empresas
 
 
 # ==========================================
@@ -53,6 +53,7 @@ app.add_middleware(
 # INCLUIR ROUTERS
 # ==========================================
 app.include_router(recomendaciones.router)
+app.include_router(empresas.router)
 
 
 # ==========================================
@@ -69,6 +70,8 @@ def raiz():
             "sectores": "/recomendaciones/sectores",
             "estadisticas": "/recomendaciones/estadisticas",
             "recomendaciones": "/recomendaciones/{codigo}",
+            "empresas": "/empresas",
+            "socios": "/empresas/socios/{codigo}",
         }
     }
 

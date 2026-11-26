@@ -15,6 +15,10 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 
 RUTA_MIP = os.path.join(DATA_DIR, "MIP_2013.xlsx")
 RUTA_CLASIFICACION = os.path.join(DATA_DIR, "clasificacion_2024.xlsx")
+RUTA_CROSSWALK = os.path.join(DATA_DIR, "crosswalk_scian_mip.csv")
+
+# Hoja del directorio empresarial dentro de clasificacion_2024.xlsx
+HOJA_EMPRESAS = "Sheet1"
 
 # ==========================================
 # CONFIGURACIÓN DE LA MIP

@@ -1,17 +1,31 @@
 """
+==========================================
+SERVICIO DE MATRIZ INSUMO-PRODUCTO (MIP)
+==========================================
+Analiza la Matriz Insumo-Producto 2013 (INEGI) y genera las
+relaciones sectoriales de clientes y proveedores.
 
-mip service (actualizado con cascada jerarquica)
-
-servicio para analizar la Matriz Insumo-Producto 2013
-y generar recomendaciones de proveedores o clientes
-
+Reglas analíticas obligatorias:
+- La homologación código SCIAN -> rama MIP se delega SIEMPRE en
+  codigo_service.resolver_codigo_mip (resolución centralizada).
+- Filtrado estricto: jamás se emiten relaciones con coeficiente
+  técnico <= 0. Si un sector no tiene clientes/proveedores con
+  coeficiente positivo, la lista se devuelve vacía; no se rellena.
+- El campo "porcentaje" es la participación relativa normalizada
+  del coeficiente dentro del total de coeficientes positivos del
+  flujo (fila o columna), NO el coeficiente técnico bruto x 100.
+- El archivo data/MIP_2013.xlsx es de solo lectura: nunca se
+  modifica; las equivalencias viven en el crosswalk.
 """
 
 import pandas as pd
+
 from app.core.config import RUTA_MIP, FILA_ENCABEZADOS_MIP, TOP_N_DEFAULT
 from app.services.clasificacion_service import obtener_categoria
+from app.services.codigo_service import resolver_codigo_mip
 
 _mip_cache = None
+
 
 def cargar_mip():
     global _mip_cache
@@ -27,75 +41,115 @@ def cargar_mip():
     _mip_cache = df
     return df
 
+
 def _extraer_codigo(texto_sector):
     partes = texto_sector.strip().split(" - ")
     return partes[0].strip() if partes else None
 
-def _encontrar_codigo_mip(df, codigo_original):
+
+def _codigos_mip(df):
+    """Conjunto de códigos de rama (4 dígitos) existentes en la MIP."""
+    codigos = set()
+    for concepto in df["Concepto"]:
+        codigo = _extraer_codigo(str(concepto))
+        if codigo and codigo.isdigit() and len(codigo) == 4:
+            codigos.add(codigo)
+    return codigos
+
+
+def resolver_sector(codigo_scian):
     """
-    Busca un codigo. Si es de 6 dígitos (311811) y no existe, 
-    busca el de 5 (31181), luego el de 4 (3118), luego el de 3 (311).
+    Homologa un código SCIAN a una rama MIP usando la vía central.
+
+    Returns:
+        ResolucionSector o None si no hay equivalencia (la capa API
+        responde 404 con causa "sin_equivalencia_mip").
+
+    Raises:
+        CodigoInvalidoError: formato inválido (la capa API responde 422).
     """
-    codigo = str(codigo_original).strip()
+    df = cargar_mip()
+    return resolver_codigo_mip(codigo_scian, _codigos_mip(df))
 
-    while len(codigo) >= 3:
-        col_encontrada = None
-        fila_encontrada = None
 
-        # Buscar en columnas
-        for col in df.columns:
-            if str(col).startswith(f"{codigo} ") or str(col) == codigo:
-                col_encontrada = col
-                break
+def _nombre_sector(df, codigo_resuelto):
+    for concepto in df["Concepto"]:
+        if str(concepto).startswith(f"{codigo_resuelto} - "):
+            return str(concepto)
+    return None
 
-        # Buscar en filas (Concepto)
-        for concepto in df["Concepto"]:
-            if str(concepto).startswith(f"{codigo} ") or str(concepto) == codigo:
-                fila_encontrada = concepto
-                break
 
-        # Si encontro ambos, devolvemos el match
-        if col_encontrada and fila_encontrada:
-            return codigo, col_encontrada, fila_encontrada
+def _redondear_significativo(valor, cifras=6):
+    """Redondea por cifras significativas: un valor > 0 jamás se vuelve 0.0."""
+    if valor == 0:
+        return 0.0
+    return float(f"{float(valor):.{cifras}g}")
 
-        # Si no encontro, le quitamos el ultimo digito y volvemos a intentar
-        codigo = codigo[:-1]
-
-    return None, None, None
 
 def _crear_lista_enriquecida(temp_df, top_n):
+    """
+    Construye el top de sectores relacionados con filtrado estricto.
+
+    - Solo coeficientes técnicos > 0 (prohibido rellenar con ceros).
+    - "porcentaje" / "participacion_relativa": peso del coeficiente
+      dentro del total de coeficientes positivos del flujo (0-100).
+    """
     temp_df = temp_df[temp_df["sector"].str.match(r"^\d")]
+    temp_df = temp_df.dropna(subset=["coeficiente"])
+    temp_df = temp_df[temp_df["coeficiente"] > 0]
+
+    total_positivo = float(temp_df["coeficiente"].sum())
+    if total_positivo <= 0:
+        return []
+
     top = temp_df.sort_values("coeficiente", ascending=False).head(top_n)
 
     resultado = []
     for _, row in top.iterrows():
         codigo = _extraer_codigo(row["sector"])
-        categoria = obtener_categoria(codigo)
+        participacion = float(row["coeficiente"]) / total_positivo * 100
 
         resultado.append({
             "codigo": codigo,
             "sector": row["sector"],
-            "categoria": categoria,
-            "coeficiente": round(float(row["coeficiente"]), 6),
-            "porcentaje": round(float(row["coeficiente"]) * 100, 2)
+            "categoria": obtener_categoria(codigo),
+            "coeficiente": _redondear_significativo(row["coeficiente"]),
+            # Cifras significativas: una relación real jamás se muestra como 0.0
+            "porcentaje": _redondear_significativo(participacion),
+            "participacion_relativa": _redondear_significativo(participacion),
         })
     return resultado
 
+
 def analizar_sector(codigo_scian, top_n=TOP_N_DEFAULT):
+    """
+    Genera las recomendaciones sectoriales de un código SCIAN.
+
+    Returns:
+        dict con la resolución trazable y los tops de clientes y
+        proveedores (solo coeficientes > 0), o None si el código no
+        tiene equivalencia en la MIP.
+
+    Raises:
+        CodigoInvalidoError: si el formato del código es inválido.
+    """
     df = cargar_mip()
 
-    # Usar el nuevo buscador inteligente con cascada
-    codigo_resuelto, nombre_columna, nombre_fila = _encontrar_codigo_mip(df, codigo_scian)
+    resolucion = resolver_codigo_mip(codigo_scian, _codigos_mip(df))
+    if resolucion is None:
+        return None
 
-    if not codigo_resuelto:
+    codigo_resuelto = resolucion.codigo_resuelto
+    nombre_columna = _nombre_sector(df, codigo_resuelto)
+    nombre_fila = nombre_columna
+    if nombre_columna is None:
         return None
 
     categoria_principal = obtener_categoria(codigo_resuelto)
 
-    # clientes (fila) 
+    # Clientes: fila del sector (quiénes le compran / usan su producto)
     fila_sector = df[df["Concepto"] == nombre_fila].iloc[0]
-    fila_valores = fila_sector.drop("Concepto")
-    fila_valores = pd.to_numeric(fila_valores, errors="coerce")
+    fila_valores = pd.to_numeric(fila_sector.drop("Concepto"), errors="coerce")
 
     temp_clientes = pd.DataFrame({
         "sector": fila_valores.index,
@@ -103,7 +157,7 @@ def analizar_sector(codigo_scian, top_n=TOP_N_DEFAULT):
     })
     lista_clientes = _crear_lista_enriquecida(temp_clientes, top_n)
 
-    # proveedores (columna)
+    # Proveedores: columna del sector (de quiénes compra insumos)
     columna_valores = pd.to_numeric(df[nombre_columna], errors="coerce")
     temp_proveedores = pd.DataFrame({
         "sector": df["Concepto"].values,
@@ -111,16 +165,19 @@ def analizar_sector(codigo_scian, top_n=TOP_N_DEFAULT):
     })
     lista_proveedores = _crear_lista_enriquecida(temp_proveedores, top_n)
 
-    # resultado
     return {
-        "codigo": codigo_scian,                   # Mantiene compatibilidad
-        "codigo_buscado": codigo_scian,           # Ej: 311811
-        "codigo_resuelto": codigo_resuelto,       # Ej: 3118
+        "codigo": resolucion.codigo_buscado,
+        "codigo_buscado": resolucion.codigo_buscado,
+        "codigo_resuelto": codigo_resuelto,
+        "codigo_mip": codigo_resuelto,
+        "metodo_mapeo": resolucion.metodo_mapeo,
+        "nivel_agregacion": resolucion.nivel_agregacion,
         "sector": nombre_fila,
         "categoria": categoria_principal,
         "top_clientes": lista_clientes,
         "top_proveedores": lista_proveedores
     }
+
 
 def listar_sectores():
     df = cargar_mip()
