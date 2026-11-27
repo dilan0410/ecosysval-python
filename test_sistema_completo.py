@@ -1,17 +1,16 @@
 """
 ==========================================
-SISTEMA COMPLETO v1
+sitema completo v1
 ==========================================
-Objetivo: Combinar MIP + Clasificación para dar
-recomendaciones enriquecidas con categorías.
+objetivo: Combinar MIP + Clasificacion para dar
+recomendaciones con categorias.
 """
 
 import pandas as pd
 import json
 
-# ==========================================
-# CONFIGURACIÓN
-# ==========================================
+# configuracion
+
 RUTA_MIP = "data/MIP_2013.xlsx"
 RUTA_CLASIFICACION = "data/clasificacion_2024.xlsx"
 FILA_ENCABEZADOS = 4
@@ -28,11 +27,11 @@ HOJAS_CATEGORIAS = [
 ]
 
 
-# ==========================================
-# FUNCIÓN: cargar_clasificacion()
-# ==========================================
+
+# funcion: cargar_clasificacion()
+
 def cargar_clasificacion():
-    """Carga las categorías de todos los sectores desde el Excel."""
+    """Carga las categorias de todos los sectores desde el excel """
     clasificacion = {}
 
     for nombre_hoja in HOJAS_CATEGORIAS:
@@ -57,12 +56,11 @@ def cargar_clasificacion():
     return clasificacion
 
 
-# ==========================================
-# FUNCIÓN AUXILIAR: extraer_codigo_de_sector()
-# ==========================================
+# funcion auxiliar: extraer_codigo_de_sector()
+
 def extraer_codigo_de_sector(texto_sector):
     """
-    Extrae el código SCIAN de un texto como:
+    Extrae el codigo SCIAN de un texto como:
     '1122 - Explotación de porcinos' → '1122'
     """
     partes = texto_sector.strip().split(" - ")
@@ -71,22 +69,21 @@ def extraer_codigo_de_sector(texto_sector):
     return None
 
 
-# ==========================================
-# FUNCIÓN PRINCIPAL: analizar_sector()
-# ==========================================
+# funcion principal: analizar_sector()
+
 def analizar_sector(codigo_scian, clasificacion, top_n=5):
     """
-    Analiza un sector y devuelve sus top clientes/proveedores
-    CON su categoría económica.
+    analiza un sector y devuelve sus top clientes/proveedores
+    con su categoria economica.
     """
-    # ---------- 1. CARGAR Y LIMPIAR LA MIP ----------
+    # cargar y limpiar la Mip
     df = pd.read_excel(RUTA_MIP, header=FILA_ENCABEZADOS)
     df = df[df["Concepto"].notna()]
     df = df[~df["Concepto"].str.startswith("Fuente:", na=False)]
     df["Concepto"] = df["Concepto"].str.strip()
     df.columns = [str(col).strip() for col in df.columns]
 
-    # ---------- 2. BUSCAR EL SECTOR ----------
+    # buscar el sector
     nombre_columna = None
     for col in df.columns:
         if str(col).startswith(f"{codigo_scian} "):
@@ -103,10 +100,10 @@ def analizar_sector(codigo_scian, clasificacion, top_n=5):
         print(f"Sector '{codigo_scian}' no encontrado")
         return None
 
-    # ---------- 3. OBTENER CATEGORÍA DEL SECTOR PRINCIPAL ----------
+    # obtener categoria del sector principal
     categoria_principal = clasificacion.get(codigo_scian, "Sin clasificar")
 
-    # ---------- 4. OBTENER CLIENTES ----------
+    # obtener clientes
     fila_sector = df[df["Concepto"] == nombre_fila].iloc[0]
     fila_valores = fila_sector.drop("Concepto")
     fila_valores = pd.to_numeric(fila_valores, errors="coerce")
@@ -120,19 +117,19 @@ def analizar_sector(codigo_scian, clasificacion, top_n=5):
 
     lista_clientes = []
     for _, row in top_clientes.iterrows():
-        # NUEVO: Extraer código y obtener categoría
+        # extraer codigo y obtener categoria
         codigo = extraer_codigo_de_sector(row["sector"])
         categoria = clasificacion.get(codigo, "Sin clasificar")
 
         lista_clientes.append({
             "codigo": codigo,
             "sector": row["sector"],
-            "categoria": categoria,  # NUEVO
+            "categoria": categoria,
             "coeficiente": round(float(row["coeficiente"]), 6),
             "porcentaje": round(float(row["coeficiente"]) * 100, 2)
         })
 
-    # ---------- 5. OBTENER PROVEEDORES ----------
+    # obtener proveedores
     columna_valores = pd.to_numeric(df[nombre_columna], errors="coerce")
     temp_proveedores = pd.DataFrame({
         "sector": df["Concepto"].values,
@@ -143,31 +140,30 @@ def analizar_sector(codigo_scian, clasificacion, top_n=5):
 
     lista_proveedores = []
     for _, row in top_proveedores.iterrows():
-        # NUEVO: Extraer código y obtener categoría
+        # extraer codigo y obtener categoria
         codigo = extraer_codigo_de_sector(row["sector"])
         categoria = clasificacion.get(codigo, "Sin clasificar")
 
         lista_proveedores.append({
             "codigo": codigo,
             "sector": row["sector"],
-            "categoria": categoria,  # NUEVO
+            "categoria": categoria,
             "coeficiente": round(float(row["coeficiente"]), 6),
             "porcentaje": round(float(row["coeficiente"]) * 100, 2)
         })
 
-    # ---------- 6. DEVOLVER RESULTADO COMPLETO ----------
+    # devolver resultado completo
     return {
         "codigo": codigo_scian,
         "sector": nombre_fila,
-        "categoria": categoria_principal,  # NUEVO
+        "categoria": categoria_principal,
         "top_clientes": lista_clientes,
         "top_proveedores": lista_proveedores
     }
 
 
-# ==========================================
-# FUNCIÓN AUXILIAR: mostrar_resultado()
-# ==========================================
+# funcion auxiliar: mostrar_resultado()
+
 def mostrar_resultado(resultado):
     """Imprime el resultado con categorías visibles."""
     if not resultado:
@@ -175,7 +171,7 @@ def mostrar_resultado(resultado):
 
     print(f"\n{' ' * 70}")
     print(f"sector: {resultado['sector']}")
-    print(f"  categoria: {resultado['categoria']}")  # NUEVO
+    print(f"  categoria: {resultado['categoria']}")
     print(f"{' ' * 70}")
 
     print(f"\ntop {len(resultado['top_clientes'])} clientes:")
@@ -188,21 +184,19 @@ def mostrar_resultado(resultado):
         print(f"   {i}. [{proveedor['categoria']:<22}] {proveedor['sector']}")
         print(f"      → {proveedor['porcentaje']}%")
 
+# ejecucion principal
 
-# ==========================================
-# EJECUCIÓN PRINCIPAL
-# ==========================================
 if __name__ == "__main__":
     
     print("sistema completo: MIP + CLASIFICACION")
     
 
-    # Cargar clasificación UNA sola vez (más eficiente)
+    # cargar clasificacion una sola vez. Mas eficiente
     print("\nCargando clasificacion de sectores...")
     clasificacion = cargar_clasificacion()
     print(f"{len(clasificacion)} sectores clasificados")
 
-    # Probar con 3 sectores diferentes
+    # probar con 3 sectores diferentes
     sectores_a_probar = ["3111", "3113", "5241"]
     todos_los_resultados = []
 
@@ -213,7 +207,7 @@ if __name__ == "__main__":
         if resultado:
             todos_los_resultados.append(resultado)
 
-    # Guardar en JSON enriquecido
+    # guardar en JSON
     ruta_salida = "resultados_completos.json"
     with open(ruta_salida, "w", encoding="utf-8") as f:
         json.dump(todos_los_resultados, f, indent=2, ensure_ascii=False)
